@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quarkus-cloud-native.omatheusmesmo.dev/schemas/webhook.json",
+  "title": "Webhook Event",
+  "description": "Schema for incoming webhook events processed by the Event Processor API",
+  "type": "object",
+  "required": ["source", "eventType", "payload"],
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "Origin system that generated the event",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "eventType": {
+      "type": "string",
+      "description": "Type of event (e.g., order.created, payment.completed)",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific data payload",
+      "additionalProperties": true
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the event occurred"
+    }
+  },
+  "additionalProperties": false
+}
