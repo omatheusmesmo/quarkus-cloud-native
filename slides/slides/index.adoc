@@ -1,13 +1,10 @@
 = Quarkus Cloud Native for Knative
 :author: Matheus Oliveira
 :icons: font
-:experimental:
-:imagesdir: img
 :source-highlighter: highlightjs
-:highlightjs-theme: https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.18.3/styles/atom-one-dark.min.css
-:highlightjs-languages: java, css, bash, yaml, properties
+:highlightjs-theme: https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css
+:highlightjs-languages: java, bash, properties, json
 :revealjs_theme: black
-:customcss: css/presentation.css
 :revealjs_width: 1280
 :revealjs_height: 720
 :revealjs_slideNumber: c/t
@@ -16,4 +13,79 @@
 :revealjs_hash: true
 :revealjs_history: true
 
-include::slides.adoc[]
+++++
+<style>
+:root {
+  --tn-bg: #1a1b26;
+  --tn-surface: #24283b;
+  --tn-text: #c0caf5;
+  --tn-text-dim: #565f89;
+  --tn-blue: #7aa2f7;
+  --tn-green: #9ece6a;
+  --tn-orange: #ff9e64;
+  --tn-red: #f7768e;
+  --tn-purple: #bb9af7;
+  --tn-cyan: #7dcfff;
+  --tn-yellow: #e0af68;
+}
+
+.reveal-viewport { background: var(--tn-bg) !important; }
+.reveal { color: var(--tn-text) !important; }
+.reveal h1, .reveal h2, .reveal h3 { color: var(--tn-blue) !important; text-transform: none !important; letter-spacing: 0 !important; }
+.reveal h1 { font-size: 2.2em !important; }
+.reveal h2 { font-size: 1.6em !important; border-bottom: 2px solid var(--tn-surface); padding-bottom: 0.2em; }
+.reveal strong { color: var(--tn-green) !important; }
+.reveal em { color: var(--tn-orange) !important; font-style: italic; }
+.reveal code { background: var(--tn-surface) !important; color: var(--tn-cyan) !important; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+.reveal pre { background: var(--tn-surface) !important; border: 1px solid rgba(122,162,247,0.15); border-radius: 6px; }
+.reveal pre code { background: transparent !important; color: var(--tn-text) !important; }
+.reveal a { color: var(--tn-cyan) !important; }
+.reveal a:hover { color: var(--tn-purple) !important; }
+.reveal .slide-number { color: var(--tn-text-dim) !important; background: var(--tn-surface) !important; }
+
+body.lang-pt .en { display: none !important; }
+body.lang-pt .pt { display: revert !important; }
+body:not(.lang-pt) .pt { display: none !important; }
+body:not(.lang-pt) .en { display: revert !important; }
+
+#lang-toggle {
+  position: fixed; top: 12px; right: 12px; z-index: 100;
+  background: var(--tn-surface); color: var(--tn-cyan);
+  border: 1px solid rgba(125,207,255,0.25); border-radius: 6px;
+  padding: 6px 14px; font-size: 14px; cursor: pointer;
+  font-family: monospace; transition: all 0.2s;
+}
+#lang-toggle:hover { background: rgba(125,207,255,0.12); border-color: var(--tn-cyan); }
+
+div.en table, div.pt table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+div.en th, div.pt th { background: var(--tn-surface); color: var(--tn-blue); border: 1px solid rgba(122,162,247,0.2); padding: 8px 14px; text-align: left; font-weight: bold; }
+div.en td, div.pt td { border: 1px solid rgba(122,162,247,0.1); padding: 8px 14px; text-align: left; }
+div.en tr:hover, div.pt tr:hover { background: rgba(122,162,247,0.05); }
+div.en ul, div.pt ul, div.en ol, div.pt ol { margin: 0.5em 0; padding-left: 1.5em; }
+div.en li, div.pt li { margin: 0.3em 0; }
+div.en li::marker, div.pt li::marker { color: var(--tn-blue); }
+.reveal .slide-content p { margin: 0.4em 0; }
+.reveal .slide-content .big { font-size: 1.8em; font-weight: bold; margin: 0.3em 0; color: var(--tn-green); }
+.reveal .slide-content .small { font-size: 0.65em; color: var(--tn-text-dim); }
+.reveal .slide-content .lead { font-size: 1.2em; color: var(--tn-orange); }
+.reveal .slide-content .note { font-size: 0.7em; color: var(--tn-text-dim); margin-top: 0.6em; }
+.reveal .slide-content .highlight-green { color: var(--tn-green); font-weight: bold; }
+.reveal .slide-content .highlight-orange { color: var(--tn-orange); font-weight: bold; }
+.reveal .slide-content .highlight-red { color: var(--tn-red); font-weight: bold; }
+.reveal .slide-content .highlight-purple { color: var(--tn-purple); font-weight: bold; }
+</style>
+<button id="lang-toggle" onclick="document.body.classList.toggle('lang-pt');this.textContent=document.body.classList.contains('lang-pt')?'PT':'EN'">EN</button>
+++++
+
+[%notitle, background-color="#1a1b26"]
+== Quarkus Cloud Native
+
+[.en.lead]
+Knative-Ready Native Images for Serverless Workloads
+
+[.pt.lead]
+Imagens Nativas Prontas para Knative e Serverless
+
+Matheus Oliveira
+
+include::_content.adoc[]

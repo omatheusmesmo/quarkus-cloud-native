@@ -1,131 +1,94 @@
 # Quarkus Cloud Native
 
-A Quarkus demo showcasing JVM vs Native compilation for Knative deployments, with benchmark tooling to measure the real performance differences that matter for cold starts.
-
-## What it does
-
-Webhook receiver API backed by PostgreSQL, designed to run on Knative Serving with scale-to-zero. Includes a suite of JBang benchmark scripts to measure startup time, RSS memory, time-to-first-request, and binary size — the metrics that matter most when Knative scales from zero.
-
-## Endpoints
-
-| Path | Description |
-|------|-------------|
-| `POST /api/webhooks` | Create webhook event |
-| `GET /api/webhooks` | List all webhooks |
-| `GET /api/webhooks/{id}` | Get webhook by ID |
-| `GET /api/system/info` | Runtime info (mode, JVM, memory) |
-| `GET /api/system/benchmark` | Self-benchmark endpoint |
-| `GET /q/health` | Health check |
-| `GET /q/openapi` | OpenAPI schema |
+Webhook receiver API backed by PostgreSQL, designed for Knative Serving with scale-to-zero. Includes a container-based benchmark comparing JVM vs Native startup, memory, and throughput under CPU-pinned conditions.
 
 ## Prerequisites
 
 - [SDKMAN](https://sdkman.io) with JDK 25 (`25.0.2-open`)
 - [Mandrel](https://github.com/graalvm/mandrel) `25.0.2.r25-mandrel` for native builds
-- [JBang](https://www.jbang.dev) for benchmark scripts
+- [JBang](https://www.jbang.dev) for the benchmark script
+- [k6](https://k6.io) for load testing
+- Docker (for PostgreSQL and container builds)
 - [lazyslide](https://github.com/maxandersen/lazyslide) for presentation slides
-- Docker (for PostgreSQL and optional container builds)
 
 ## Quick Start
 
 ```shell
-# Install JDK
 sdk install java 25.0.2-open
-
-# Start PostgreSQL
 make db-up
-
-# Dev mode (live reload)
 make dev
-
-# Run tests
 make test
 ```
 
 ## Build & Run
 
 ```shell
-# JVM mode
-make package
-make run-jvm
-
-# Native mode (requires Mandrel)
-make native
-make run-native
+make package && make run-jvm
+make native && make run-native
 ```
 
-## Benchmarks
+## Container-Based Benchmark
 
-All benchmark scripts are in `benchmark/` and run via JBang:
+`make compare` runs everything: auto-builds missing images, starts PostgreSQL if needed, then benchmarks both modes.
 
-```shell
-# Collect full metrics snapshot (startup, RSS, TTFR, sizes)
-make metrics-record
+### Methodology
 
-# Individual benchmarks
-make benchmark          # Self-benchmark via /api/system/benchmark
-make startup            # Measure JVM vs Native startup time
-make memory             # Measure RSS memory usage
-make load-test          # HTTP load test
-make compare            # Full JVM vs Native comparison
-make report             # Generate comparison report
-```
+1. `docker run -d --rm --network host` starts the container; health check confirms `/q/health` returns 200 OK
+2. 5 startup iterations per mode: 1st = cold (after `drop_caches`), 2-5 = warm average
+3. CPU pinning via `--cpuset-cpus` keeps app, DB, and k6 on separate cores
+4. k6 warmup: 500 VUs for 60s (discarded), then 60s measurement pass
+5. Results saved to `metrics/compare-YYYY-MM-DD.json`
 
-Metrics are saved to `metrics/YYYY-MM-DD.json` with versioned history in `metrics/history.json`.
+**Two startup measurements:**
+
+- **Container** = `docker run` to `/q/health` 200 OK (production-realistic, includes container overhead)
+- **Quarkus** = `started in Xs` from container logs (app-only reference)
 
 ### Sample Results
 
-| Metric | Native | JVM | Ratio |
-|--------|--------|-----|-------|
-| Startup time | ~70 ms | ~2700 ms | 37x faster |
-| Time-to-first-request | ~70 ms | ~2700 ms | 37x faster |
-| RSS memory | ~79 MB | ~254 MB | 3.2x less |
-| Binary size (total) | 86.3 MB | 336.0 MB | 3.9x smaller |
+| Metric | JVM | Native | Ratio |
+|--------|-----|--------|-------|
+| Cold start: container | 3,541 ms | 642 ms | 5.5x Native |
+| Cold start: Quarkus | 2,718 ms | 174 ms | 15.6x Native |
+| Warm avg: container | 2,400 ms | 301 ms | 8.0x Native |
+| Warm avg: Quarkus | 1,990 ms | 48 ms | 41.5x Native |
+| RSS memory | 241 MB | 12 MB | 20.1x Native |
+| Heap used | 26 MB | 9 MB | 2.9x Native |
+| Container image | 185.2 MB | 37.9 MB | 4.9x Native |
+| Requests/s (k6) | 408 | 260 | 1.6x JVM |
+| P50 latency | 1,039 ms | 1,581 ms | 1.5x JVM |
+| P99 latency | 4,265 ms | 7,118 ms | 1.7x JVM |
 
-> Native binary includes runtime. JVM total includes app (42.7 MB) + JDK runtime (293.2 MB).
+### Throughput Trade-off
 
-## Presentation
+JVM wins sustained throughput: JIT optimization and a larger heap allow higher requests/s and lower tail latency. Native wins cold start and memory density: faster startup, smaller footprint, smaller container image. The Native P99 penalty comes from Serial GC, a smaller heap, and less JIT optimization. For scale-to-zero workloads, cold start and memory density matter more than steady-state throughput.
 
-Install [lazyslide](https://github.com/maxandersen/lazyslide) and serve the slides with live reload:
+### Machine Info
 
-```shell
-jbang app install lazyslide@maxandersen
-lazyslide serve slides/
-```
-
-The presentation covers the Knative cold start problem, JVM vs Native benchmarks, and deployment to Knative Serving.
+AMD Ryzen 5 5600GT / 12 cores / 30 GB RAM / CPU pinning: app=2-5, db=0-1, k6=6-11
 
 ## Knative Deployment
 
 ```shell
-# Build native executable
 make native
-
-# Deploy to Knative
 make deploy-knative
-
-# Remove from Knative
-make undeploy-knative
 ```
-
-The project generates Knative manifests via `quarkus.kubernetes.deployment-target=knative` in `application.properties`.
 
 ## Database
 
-PostgreSQL 18 runs via Docker Compose:
-
 ```shell
-make db-up      # Start
-make db-down    # Stop
-make db-status  # Check status
+make db-up
+make db-down
+make db-status
 ```
 
-The `%prod` datasource config is baked into the native binary at build time, so no runtime flags are needed when Docker Compose DB is up.
+The `%prod` datasource config is baked into the native binary at build time.
 
-## All Make Targets
+## Presentation
 
 ```shell
-make help
+jbang app install lazyslide@maxandersen
+lazyslide serve slides/
 ```
 
 ## Tech Stack
@@ -135,7 +98,8 @@ make help
 - PostgreSQL 18
 - SmallRye Health, OpenAPI, Micrometer + Prometheus
 - Mandrel 25.0.2.0-Final for native compilation
-- JBang benchmark scripts with Picocli
+- JBang benchmark script with Picocli
+- k6 for load testing
 - lazyslide for presentation
 
 ## Guides

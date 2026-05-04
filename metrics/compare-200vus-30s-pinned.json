@@ -1,0 +1,65 @@
+{
+  "date": "2026-05-03T22:15:50.848236872",
+  "methodology": "container-based",
+  "machine": {
+    "cpu": "AMD Ryzen 5 5600GT with Radeon Graphics",
+    "cores": "12",
+    "memoryGb": "30",
+    "kernel": "6.19.13-arch1-1",
+    "os": "Arch Linux",
+    "docker": "29.4.1"
+  },
+  "benchmarkConfig": {
+    "vus": 200,
+    "duration": "30s",
+    "appCpus": "2-5",
+    "dbCpus": "0-1",
+    "k6Cpus": "6-11"
+  },
+  "jvm": {
+    "startup": {
+      "coldStartMs": 3164,
+      "warmAvgMs": 2353.5,
+      "warmMinMs": 2266,
+      "warmMaxMs": 2405,
+      "appColdStartMs": 2480,
+      "appWarmAvgMs": 1923
+    },
+    "memory": {
+      "rssMb": 225,
+      "heapMb": 26
+    },
+    "imageSizeMb": 185.2376594543457,
+    "k6": {
+      "rps": 580.8103405749885,
+      "avgLatencyMs": 343.39171438084975,
+      "p50Ms": 284.592519,
+      "p90Ms": 652.5336022,
+      "p99Ms": 1158.68414186,
+      "totalReqs": 17503
+    }
+  },
+  "native": {
+    "startup": {
+      "coldStartMs": 586,
+      "warmAvgMs": 288.75,
+      "warmMinMs": 233,
+      "warmMaxMs": 326,
+      "appColdStartMs": 144,
+      "appWarmAvgMs": 52
+    },
+    "memory": {
+      "rssMb": 12,
+      "heapMb": 9
+    },
+    "imageSizeMb": 37.92682075500488,
+    "k6": {
+      "rps": 357.0551207651269,
+      "avgLatencyMs": 558.8991933065196,
+      "p50Ms": 434.843688,
+      "p90Ms": 1347.1540101,
+      "p99Ms": 2194.6587112600014,
+      "totalReqs": 10890
+    }
+  }
+}

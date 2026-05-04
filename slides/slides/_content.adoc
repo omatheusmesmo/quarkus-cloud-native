@@ -1,0 +1,495 @@
+== The Project
+
+[.en]
+**quarkus-cloud-native** is a Webhook receiver API that demonstrates why native compilation matters for Knative.
+
+[.pt]
+**quarkus-cloud-native** é uma API de recebimento de Webhooks que demonstra por que compilação nativa importa para o Knative.
+
+++++
+<div class="en">
+<ul>
+<li>Quarkus 3.35.1 + JDK 25 + Mandrel 25.0.2</li>
+<li>Hibernate ORM with Panache + PostgreSQL 18</li>
+<li>REST + Jackson + Bean Validation</li>
+<li>SmallRye Health, OpenAPI, Micrometer</li>
+<li>k6 load test + 1 benchmark script: <code>make compare</code></li>
+<li>Knative Serving deployment (scale-to-zero)</li>
+</ul>
+</div>
+<div class="pt">
+<ul>
+<li>Quarkus 3.35.1 + JDK 25 + Mandrel 25.0.2</li>
+<li>Hibernate ORM com Panache + PostgreSQL 18</li>
+<li>REST + Jackson + Bean Validation</li>
+<li>SmallRye Health, OpenAPI, Micrometer</li>
+<li>Teste de carga k6 + 1 script de benchmark: <code>make compare</code></li>
+<li>Deploy no Knative Serving (scale-to-zero)</li>
+</ul>
+</div>
+++++
+
+== The Entity
+
+`Webhook` extends PanacheEntity with snake_case naming strategy:
+
+[source,java]
+----
+@Entity
+public class Webhook extends PanacheEntity {
+
+@Column(nullable = false)
+public String source;
+
+@Column(nullable = false)
+public String eventType;
+
+@Column(columnDefinition = "TEXT")
+public String payload;
+
+public Instant receivedAt;
+public String processingMode;
+}
+----
+
+== The API
+
+[.en]
+Input DTO with Bean Validation, output DTO with factory method:
+
+[.pt]
+DTO de entrada com Bean Validation, DTO de saída com factory method:
+
+[source,java]
+----
+public record WebhookRequest(
+@NotBlank @Size(max = 255) String source,
+@NotBlank @Size(max = 100) String eventType,
+String payload
+) {}
+
+public record WebhookResponse(
+Long id, String source, String eventType,
+String payload, Instant receivedAt, String processingMode
+) {
+public static WebhookResponse from(Webhook w) {
+return new WebhookResponse(w.id, w.source,
+w.eventType, w.payload, w.receivedAt, w.processingMode);
+}
+}
+----
+
+== The Cold Start Problem
+
+[.en]
+Knative scales to zero to save resources. When a request arrives, a **cold start** happens:
+
+[.pt]
+O Knative escala para zero para economizar recursos. Quando uma requisição chega, acontece um **cold start**:
+
+++++
+<div class="en">
+<ol>
+<li>Knative Activator receives the request</li>
+<li>Pod is scheduled onto a node</li>
+<li>Container image is pulled</li>
+<li>Container is created and app starts</li>
+<li>First request is served</li>
+</ol>
+<p>With JVM apps, <strong>step 4 alone takes 2-3 seconds</strong> before the request is even processed.</p>
+</div>
+<div class="pt">
+<ol>
+<li>O Activator do Knative recebe a requisição</li>
+<li>O Pod é agendado em um nó</li>
+<li>A imagem do container é baixada</li>
+<li>O container é criado e a app inicia</li>
+<li>A primeira requisição é atendida</li>
+</ol>
+<p>Com apps JVM, <strong>só o passo 4 leva 2-3 segundos</strong> antes da requisição ser processada.</p>
+</div>
+++++
+
+== Why Cold Start Matters
+
+[.en]
+Our benchmark measures **container-based** startup, the same path Knative follows:
+
+[.pt]
+Nosso benchmark mede startup **baseado em container**, o mesmo caminho que o Knative segue:
+
+++++
+<div class="en">
+<ul>
+<li><strong>Container start:</strong> <code>docker run</code> → health check. The <em>production-realistic</em> metric: container creation + app init + health probe. What Knative users experience.</li>
+<li><strong>Quarkus log:</strong> "started in Xs" from container logs. App-only, eliminates Docker overhead.</li>
+<li><strong>Cold vs Warm:</strong> 1st run drops OS page cache. Warm runs reuse cached pages. <em>Scale-from-zero = cold.</em></li>
+</ul>
+<p>CPU pinning: app=cpuset 2-5 (4 vCPUs), DB=cpuset 0-1, k6=cpuset 6-11</p>
+</div>
+<div class="pt">
+<ul>
+<li><strong>Start do container:</strong> <code>docker run</code> → health check. Métrica <em>realista para produção</em>: criação do container + init da app + health probe.</li>
+<li><strong>Log do Quarkus:</strong> "started in Xs" dos logs do container. Só a app, elimina overhead do Docker.</li>
+<li><strong>Cold vs Warm:</strong> 1a exec limpa page cache do SO. Execuções quentes reusam cache. <em>Scale-from-zero = cold.</em></li>
+</ul>
+<p>CPU pinning: app=cpuset 2-5 (4 vCPUs), BD=cpuset 0-1, k6=cpuset 6-11</p>
+</div>
+++++
+
+== Quarkus Native to the Rescue
+
+[.en]
+Quarkus compiles to a **standalone native executable** via Mandrel/GraalVM:
+
+[.pt]
+O Quarkus compila para um **executável nativo standalone** via Mandrel/GraalVM:
+
+++++
+<div class="en">
+<ul>
+<li><strong>No JVM:</strong> the runtime is baked into the binary</li>
+<li><strong>No classpath scanning</strong> at startup</li>
+<li><strong>No JIT warmup:</strong> AOT compiled</li>
+<li><strong>Sub-second startup,</strong> ideal for serverless</li>
+<li><strong>Cold start ≈ warm start:</strong> no OS cache dependency</li>
+<li><strong>20x less memory:</strong> 12 MB RSS vs 241 MB</li>
+</ul>
+</div>
+<div class="pt">
+<ul>
+<li><strong>Sem JVM:</strong> o runtime é embutido no binário</li>
+<li><strong>Sem scan de classpath</strong> na inicialização</li>
+<li><strong>Sem warmup de JIT:</strong> compilado AOT</li>
+<li><strong>Startup sub-segundo,</strong> ideal para serverless</li>
+<li><strong>Cold start ≈ warm start:</strong> sem dependência de cache do SO</li>
+<li><strong>20x menos memória:</strong> 12 MB RSS vs 241 MB</li>
+</ul>
+</div>
+++++
+
+[%notitle, background-color="#1a1b26"]
+== The Numbers
+
+++++
+<div class="en">
+<table>
+<thead><tr><th>Metric</th><th>JVM</th><th>Native</th><th>vs JVM</th></tr></thead>
+<tbody>
+<tr><td>Cold start: container (ms)</td><td>3,541</td><td>642</td><td>5.5x faster</td></tr>
+<tr><td>Cold start: Quarkus log (ms)</td><td>2,718</td><td>174</td><td>15.6x faster</td></tr>
+<tr><td>Warm avg: container (ms)</td><td>2,400</td><td>301</td><td>8.0x faster</td></tr>
+<tr><td>Warm avg: Quarkus log (ms)</td><td>1,990</td><td>48</td><td>41.5x faster</td></tr>
+<tr><td>RSS memory (MB)</td><td>241</td><td>12</td><td>20.1x less</td></tr>
+<tr><td>Heap used (MB)</td><td>26</td><td>9</td><td>2.9x less</td></tr>
+<tr><td>Container image (MB)</td><td>185.2</td><td>37.9</td><td>4.9x smaller</td></tr>
+<tr><td>Requests/s (k6)</td><td>408</td><td>260</td><td>1.6x JVM</td></tr>
+<tr><td>P50 latency (ms)</td><td>1,039</td><td>1,581</td><td>1.5x JVM</td></tr>
+<tr><td>P90 latency (ms)</td><td>2,310</td><td>4,077</td><td>1.8x JVM</td></tr>
+<tr><td>P99 latency (ms)</td><td>4,265</td><td>7,118</td><td>1.7x JVM</td></tr>
+</tbody>
+</table>
+<p class="note">Quarkus 3.35.1 · Mandrel 25.0.2 · JDK 25 · k6: 500 VUs, 60s · CPU pinning: app=2-5 db=0-1 k6=6-11 · AMD Ryzen 5 5600GT · 12 cores · 30 GB RAM</p>
+</div>
+<div class="pt">
+<table>
+<thead><tr><th>Métrica</th><th>JVM</th><th>Native</th><th>vs JVM</th></tr></thead>
+<tbody>
+<tr><td>Cold start: container (ms)</td><td>3.541</td><td>642</td><td>5.5x mais rápido</td></tr>
+<tr><td>Cold start: log Quarkus (ms)</td><td>2.718</td><td>174</td><td>15.6x mais rápido</td></tr>
+<tr><td>Média quente: container (ms)</td><td>2.400</td><td>301</td><td>8.0x mais rápido</td></tr>
+<tr><td>Média quente: log Quarkus (ms)</td><td>1.990</td><td>48</td><td>41.5x mais rápido</td></tr>
+<tr><td>Memória RSS (MB)</td><td>241</td><td>12</td><td>20.1x menor</td></tr>
+<tr><td>Heap usado (MB)</td><td>26</td><td>9</td><td>2.9x menor</td></tr>
+<tr><td>Imagem do container (MB)</td><td>185,2</td><td>37,9</td><td>4.9x menor</td></tr>
+<tr><td>Requisições/s (k6)</td><td>408</td><td>260</td><td>1.6x JVM</td></tr>
+<tr><td>Latência P50 (ms)</td><td>1.039</td><td>1.581</td><td>1.5x JVM</td></tr>
+<tr><td>Latência P90 (ms)</td><td>2.310</td><td>4.077</td><td>1.8x JVM</td></tr>
+<tr><td>Latência P99 (ms)</td><td>4.265</td><td>7.118</td><td>1.7x JVM</td></tr>
+</tbody>
+</table>
+<p class="note">Quarkus 3.35.1 · Mandrel 25.0.2 · JDK 25 · k6: 500 VUs, 60s · CPU pinning: app=2-5 db=0-1 k6=6-11 · AMD Ryzen 5 5600GT · 12 cores · 30 GB RAM</p>
+</div>
+++++
+
+== Production Impact: Cost & SLA
+
+++++
+<div class="en">
+<ul>
+<li><strong>SLA:</strong> 3,541ms JVM cold start breaches a 3s SLO on every scale-from-zero event. Native's 642ms fits inside most "fast" SLO budgets.</li>
+<li><strong>Cost:</strong> 241 MB RSS per JVM pod = ~66 pods on a 16 GB node. 12 MB per Native pod = 1,300+ pods. For 500 replicas: JVM needs ~8 nodes, Native needs fewer than 1.</li>
+<li><strong>Autoscaling bursts:</strong> JVM queues traffic for 3+ seconds per pod during scale-out. Native handles the same burst in under 600ms per pod.</li>
+<li><strong>Beyond serverless:</strong> The cold start gap also hits rolling deployments, OOM kill restarts, and cluster autoscaler events.</li>
+</ul>
+<p class="note">Native is not just faster. It is cheaper to run and easier to keep within SLO.</p>
+</div>
+<div class="pt">
+<ul>
+<li><strong>SLA:</strong> Cold start de 3.541ms no JVM viola SLO de 3s a cada evento scale-from-zero. Os 642ms do Native cabem na maioria dos orçamentos de SLO "rápidos".</li>
+<li><strong>Custo:</strong> 241 MB RSS por pod JVM = ~66 pods em 16 GB de nó. 12 MB por pod Native = 1.300+ pods. Para 500 réplicas: JVM precisa de ~8 nós, Native de menos de 1.</li>
+<li><strong>Bursts de autoscaling:</strong> JVM mantém tráfego em fila por 3+ segundos por pod durante scale-out. Native absorve o mesmo burst em menos de 600ms por pod.</li>
+<li><strong>Além do serverless:</strong> O gap de cold start também afeta rolling deployments, reinícios por OOM kill e eventos de cluster autoscaler.</li>
+</ul>
+<p class="note">Native não é só mais rápido. É mais barato para rodar e mais fácil de manter dentro do SLO.</p>
+</div>
+++++
+
+== Throughput: The Trade-Off
+
+++++
+<div class="en">
+<ul>
+<li><strong>JVM wins throughput</strong> in our DB-bound workload (408 vs 260 req/s). JIT optimizes hot paths at runtime.</li>
+<li>Native uses Serial GC with smaller heap, leading to <strong>higher tail latency under load</strong> (P99: 7,118 ms vs 4,265 ms)</li>
+<li>Expected trade-off: <strong>Native trades peak throughput for startup speed and memory density</strong></li>
+<li>On Knative, you run many small instances, <strong>not one at max throughput</strong></li>
+</ul>
+<p class="note">Both modes hit PostgreSQL on every request. The DB is the bottleneck. JVM's JIT advantage appears in sustained throughput; Native's Serial GC shows under concurrent load.</p>
+</div>
+<div class="pt">
+<ul>
+<li><strong>JVM ganha em throughput</strong> na workload limitada pelo BD (408 vs 260 req/s). JIT otimiza hot paths em runtime.</li>
+<li>Native usa Serial GC com heap menor, gerando <strong>latência de cauda maior sob carga</strong> (P99: 7.118 ms vs 4.265 ms)</li>
+<li>Trade-off esperado: <strong>Native troca throughput máximo por velocidade de startup e densidade de memória</strong></li>
+<li>No Knative, você roda muitas instâncias pequenas, <strong>não uma no throughput máximo</strong></li>
+</ul>
+<p class="note">Ambos os modos acessam PostgreSQL a cada requisição. O BD é o gargalo. A vantagem do JIT aparece no throughput sustentado; o Serial GC do Native aparece sob carga concorrente.</p>
+</div>
+++++
+
+== Cold Start: The Real Gap
+
+[.en.big]
+**JVM cold start is 5.5x slower** than Native container
+
+[.pt.big]
+**JVM cold start é 5.5x mais lento** que o container Native
+
+++++
+<div class="en">
+<ul>
+<li>Container start = docker run → health check, production-realistic for Knative</li>
+<li>Quarkus log: JVM 2,718 ms vs Native 174 ms (<strong>15.6x faster</strong>)</li>
+<li>On a fresh Knative pod: <strong>no page cache,</strong> true cold start every time</li>
+<li>Native binary is small and self-contained: <strong>cold ≈ warm</strong></li>
+<li>Our benchmark drops OS page cache between runs (needs sudo)</li>
+</ul>
+</div>
+<div class="pt">
+<ul>
+<li>Start do container = docker run → health check, realista para Knative</li>
+<li>Log Quarkus: JVM 2.718 ms vs Native 174 ms (<strong>15.6x mais rápido</strong>)</li>
+<li>Num pod Knative novo: <strong>sem page cache,</strong> cold start real sempre</li>
+<li>Binário nativo é pequeno e autocontido: <strong>cold ≈ warm</strong></li>
+<li>Nosso benchmark limpa page cache do SO entre runs (precisa de sudo)</li>
+</ul>
+</div>
+++++
+
+== Memory Footprint
+
+[.en.big]
+**20.1x** less RSS memory
+
+[.pt.big]
+**20.1x** menos memória RSS
+
+[.en]
+Native: **12 MB** vs JVM: **241 MB**. More pods per node, lower cost.
+
+[.pt]
+Native: **12 MB** vs JVM: **241 MB**. Mais pods por nó, menor custo.
+
+== Container Size
+
+[.en.big]
+**4.9x** smaller container
+
+[.pt.big]
+**4.9x** container menor
+
+++++
+<div class="en">
+<p>Native: <strong>37.9 MB</strong> (micro image) vs JVM: <strong>185.2 MB</strong> (UBI9 + OpenJDK 25)</p>
+<ul>
+<li>Faster image pulls on cold nodes, critical for Knative cold start</li>
+<li>Native uses <code>quay.io/quarkus/ubi9-quarkus-micro-image</code> (minimal base)</li>
+<li>JVM uses <code>registry.access.redhat.com/ubi9/openjdk-25-runtime</code></li>
+</ul>
+</div>
+<div class="pt">
+<p>Native: <strong>37,9 MB</strong> (micro imagem) vs JVM: <strong>185,2 MB</strong> (UBI9 + OpenJDK 25)</p>
+<ul>
+<li>Pull de imagem mais rápido em nós frios, crítico para cold start no Knative</li>
+<li>Native usa <code>quay.io/quarkus/ubi9-quarkus-micro-image</code> (base mínima)</li>
+<li>JVM usa <code>registry.access.redhat.com/ubi9/openjdk-25-runtime</code></li>
+</ul>
+</div>
+++++
+
+== Knative Deployment
+
+[source,properties]
+----
+quarkus.kubernetes.deployment-target=knative
+quarkus.container-image.group=omatheusmesmo
+----
+
+[.en]
+Build and deploy:
+
+[.pt]
+Build e deploy:
+
+[source,bash]
+----
+make native-docker # Build native container image
+make deploy-knative # Apply knative.yml to cluster
+----
+
+[.en]
+Quarkus generates `target/kubernetes/knative.yml` automatically.
+
+[.pt]
+O Quarkus gera `target/kubernetes/knative.yml` automaticamente.
+
+== Benchmark
+
+[.en]
+One command, full picture: container-based k6 load test with CPU pinning:
+
+[.pt]
+Um comando, visão completa: teste de carga k6 em container com CPU pinning:
+
+[source,bash]
+----
+make compare
+----
+
+++++
+<div class="en">
+<p>Measures startup (cold + warm), RSS memory, and k6 load test for both JVM and Native containers.</p>
+<ul>
+<li>Runs inside Docker containers: <code>docker run --cpuset-cpus</code></li>
+<li>Drops OS page cache between modes (requires <code>sudo</code>)</li>
+<li>CPU pinning: app, DB, and k6 on separate CPU sets</li>
+<li>Two metrics: <strong>container start</strong> (production) + <strong>Quarkus log</strong> (app-only)</li>
+<li>Reports P50/P90/P99 latencies + requests/s</li>
+<li>Saves JSON to <code>metrics/</code></li>
+</ul>
+</div>
+<div class="pt">
+<p>Mede startup (cold + warm), memória RSS e teste de carga k6 para ambos os containers.</p>
+<ul>
+<li>Roda dentro de containers Docker: <code>docker run --cpuset-cpus</code></li>
+<li>Limpa page cache do SO entre modos (requer <code>sudo</code>)</li>
+<li>CPU pinning: app, BD e k6 em conjuntos de CPU separados</li>
+<li>Duas métricas: <strong>start do container</strong> (produção) + <strong>log Quarkus</strong> (só app)</li>
+<li>Reporta latências P50/P90/P99 + requisições/s</li>
+<li>Salva JSON em <code>metrics/</code></li>
+</ul>
+</div>
+++++
+
+== Versioned Metrics
+
+[.en]
+Every `make compare` saves a timestamped JSON with machine info:
+
+[.pt]
+Cada `make compare` salva um JSON com timestamp e info da máquina:
+
+[source,json]
+----
+{
+"date": "2026-05-03",
+"machine": {
+"cpu": "AMD Ryzen 5 5600GT",
+"cores": "12",
+"memoryGb": "30"
+},
+"benchmarkConfig": {
+"vus": 500,
+"duration": "60s",
+"appCpus": "2-5",
+"dbCpus": "0-1",
+"k6Cpus": "6-11"
+},
+"jvm": {
+"startup": {
+"coldStartMs": 3541,
+"appColdStartMs": 2718
+},
+"memory": {
+"rssMb": 241
+},
+"k6": {
+"rps": 408,
+"p50Ms": 1039,
+"p99Ms": 4265
+}
+},
+"native": {
+"startup": {
+"coldStartMs": 642,
+"appColdStartMs": 174
+},
+"memory": {
+"rssMb": 12
+},
+"k6": {
+"rps": 260,
+"p50Ms": 1581,
+"p99Ms": 7118
+}
+}
+}
+----
+
+[.en]
+Metrics are **versioned in git** for historical tracking.
+
+[.pt]
+As métricas são **versionadas no git** para rastreamento histórico.
+
+== Quick Start
+
+[source,bash]
+----
+git clone https://github.com/omatheusmesmo/quarkus-cloud-native
+cd quarkus-cloud-native
+sdk env install # Install JDK 25 via SDKMAN
+make db-up # Start PostgreSQL
+make dev # Dev mode with hot reload
+----
+
+[.en]
+Build native and compare:
+
+[.pt]
+Build nativo e comparar:
+
+[source,bash]
+----
+make native # Build native executable
+make compare # Full JVM vs Native comparison
+----
+
+[%notitle, background-color="#1a1b26"]
+== Key Takeaway
+
+[.en.big]
+**Native compilation makes Java viable for serverless.**
+
+[.pt.big]
+**Compilação nativa torna Java viável para serverless.**
+
+[.en]
+15x faster app cold start. 20x less memory. 4.9x smaller container. Knative scale-to-zero becomes *practical* with Quarkus Native.
+
+[.pt]
+15x init da app mais rápido. 20x menos memória. 4.9x container menor. Scale-to-zero no Knative se torna *prático* com Quarkus Native.
+
+[.lead]
+github.com/omatheusmesmo/quarkus-cloud-native
