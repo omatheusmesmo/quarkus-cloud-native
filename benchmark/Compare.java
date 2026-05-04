@@ -156,10 +156,27 @@ class Compare implements Callable<Integer> {
         results.put("benchmarkConfig", k6Cfg);
         if (jvm != null) results.put("jvm", jvm.toMap());
         if (native_ != null) results.put("native", native_.toMap());
-        Path out = Path.of(outputFile);
+        String json = toJson(results);
+        Path out = Path.of(outputFile).toAbsolutePath();
         Files.createDirectories(out.getParent());
-        Files.writeString(out, toJson(results));
-        println("\nSaved: " + outputFile);
+        Path tmp = Files.createTempFile("compare-", ".json");
+        try {
+            Files.writeString(tmp, json);
+            try (var fc = java.nio.channels.FileChannel.open(tmp,
+                    java.nio.file.StandardOpenOption.WRITE)) {
+                fc.force(true);
+            }
+            Files.copy(tmp, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+        String written = Files.readString(out);
+        if (!written.contains("\"vus\":" + vus)) {
+            System.err.println("WARNING: output file verification failed — expected vus=" + vus + " but file content differs");
+            System.err.println("JSON content: " + json.substring(0, Math.min(200, json.length())));
+        } else {
+            println("\nSaved: " + out + " (verified vus=" + vus + ")");
+        }
     }
 
     return 0;
