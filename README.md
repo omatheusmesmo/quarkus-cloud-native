@@ -2,6 +2,8 @@
 
 Webhook receiver API backed by PostgreSQL, designed for Knative Serving with scale-to-zero. Includes a container-based benchmark comparing JVM vs Native startup, memory, and throughput under CPU-pinned conditions.
 
+> This project is a performance demo, not a production template. The benchmark numbers and Knative deployment are real, but configuration shortcuts (hardcoded credentials, drop-and-create schema) are intentional for reproducibility.
+
 ## Prerequisites
 
 - [SDKMAN](https://sdkman.io) with JDK 25 (`25.0.2-open`)
@@ -69,9 +71,13 @@ AMD Ryzen 5 5600GT / 12 cores / 30 GB RAM / CPU pinning: app=2-5, db=0-1, k6=6-1
 
 ## Knative Deployment
 
+`quarkus.kubernetes.deployment-target=knative` in `application.properties` instructs the `quarkus-kubernetes` extension to generate `target/kubernetes/knative.yml` during the build. Without this property, only a standard Kubernetes manifest is generated.
+
+> **Note:** `make deploy-knative` runs `kubectl apply -f target/kubernetes/knative.yml`. The manifest does not exist until you build the project first.
+
 ```shell
-make native
-make deploy-knative
+make native-image   # generates target/kubernetes/knative.yml and builds the container image
+make deploy-knative # applies the generated manifest to the cluster
 ```
 
 ## Database
